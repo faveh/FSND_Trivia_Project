@@ -229,7 +229,7 @@ def create_app(test_config=None):
       if category is None or previous_questions is None:
         abort(422)
 
-      if category['type'] == 'click':
+      if category['id'] == 0:
         questions = Question.query.all()
         sorted_questions = [question for question in questions if question.id not in previous_questions]
       else:
@@ -240,11 +240,11 @@ def create_app(test_config=None):
         random_question = None
       else:
         random.shuffle(sorted_questions)
-        random_question = sorted_questions[0]
+        random_question = sorted_questions[0].format()
 
       return jsonify({
         'success': True,
-        'random_question': random_question
+        'question': random_question
       })
     except:
       abort(422)
