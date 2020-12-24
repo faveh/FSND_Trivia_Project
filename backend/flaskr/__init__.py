@@ -9,7 +9,7 @@ from models import setup_db, Question, Category
 QUESTIONS_PER_PAGE = 10
 
 
-def paginate_questions(request, selection):
+def questions_pagination(request, selection):
   page = request.args.get('page', 1, type=int)
   start = (page - 1) * QUESTIONS_PER_PAGE
   end = start + QUESTIONS_PER_PAGE
@@ -17,13 +17,16 @@ def paginate_questions(request, selection):
   questions = [question.format() for question in selection]
   current_questions = questions[start:end]
 
+  if current_questions == 0:
+    abort(404)
   return current_questions
+
 
 def create_app(test_config=None):
   # create and configure the app
   app = Flask(__name__)
   setup_db(app)
-  
+
   '''
   @TODO: Set up CORS. Allow '*' for origins. Delete the sample route after completing the TODOs
   '''
@@ -43,16 +46,21 @@ def create_app(test_config=None):
   Create an endpoint to handle GET requests 
   for all available categories.
   '''
+
   @app.route('/categories')
   def get_categories():
-    categories = Category.query.all()
+    get_categories = Category.query.all()
 
-    if (len(categories) == 0):
+    if (len(get_categories) == 0):
       abort(404)
+
+    sorted_categories = {}
+    for category in get_categories:
+      sorted_categories[category.id] = category.type
 
     return jsonify({
       'success': True,
-      'categories': {category.id: category.type for category in categories}
+      'categories': sorted_categories
     })
 
   '''
@@ -61,7 +69,7 @@ def create_app(test_config=None):
   including pagination (every 10 questions). 
   This endpoint should return a list of questions, 
   number of total questions, current category, categories. 
-  
+
   TEST: At this point, when you start the application
   you should see questions and categories generated,
   ten questions per page and pagination at the bottom of the screen for three pages.
@@ -71,18 +79,20 @@ def create_app(test_config=None):
   @app.route('/questions')
   def get_questions():
     selection = Question.query.order_by(Question.id).all()
-    current_questions = paginate_questions(request, selection)
-    categories = Category.query.all()
+    get_categories = Category.query.all()
 
-    if len(current_questions) == 0:
-      abort(404)
+    questions_with_pagination = questions_pagination(request, selection)
+
+    sorted_categories = {}
+    for category in get_categories:
+      sorted_categories[category.id] = category.type
 
     return jsonify({
       'success': True,
-      'questions': current_questions,
+      'questions': questions_with_pagination,
       'total_questions': len(selection),
       'current_category': None,
-      'categories': {category.id: category.type for category in categories}
+      'categories': sorted_categories
     })
 
   '''
@@ -131,15 +141,16 @@ def create_app(test_config=None):
     difficulty = body.get('difficulty') if body.get('difficulty') else abort(422)
 
     try:
-        question = Question(question=question, answer=answer, category=category, difficulty=difficulty)
-        question.insert()
+      question = Question(question=question, answer=answer, category=category, difficulty=difficulty)
+      question.insert()
 
-        return jsonify({
-          'success': True,
-          'new_question': question.id,
-        })
+      return jsonify({
+        'success': True,
+        'new_question': question.id,
+      })
     except:
       abort(422)
+
   '''
   @TODO: 
   Create a POST endpoint to get questions based on a search term. 
@@ -165,6 +176,7 @@ def create_app(test_config=None):
         'current_category': None
       })
     abort(404)
+
   '''
   @TODO: 
   Create a GET endpoint to get questions based on category. 
@@ -179,10 +191,14 @@ def create_app(test_config=None):
     try:
       questions = Question.query.filter(Question.category == str(category_id)).all()
 
+      sorted_questions = []
+      for question in questions:
+        sorted_questions.append(question.format())
+
       return jsonify({
         'success': True,
         'current_category': category_id,
-        'questions': [question.format() for question in questions],
+        'questions': sorted_questions,
         'total_questions': len(questions),
       })
     except:
@@ -214,16 +230,21 @@ def create_app(test_config=None):
         abort(422)
 
       if category['type'] == 'click':
-        questions = Question.query.filter(Question.id.notin_((previous_questions))).all()
+        questions = Question.query.all()
+        sorted_questions = [question for question in questions if question.id not in previous_questions]
       else:
         selectedQuestions = Question.query.filter_by(category=category['id']).all()
-        questions = [question for question in selectedQuestions if question.id not in previous_questions]
+        sorted_questions = [question for question in selectedQuestions if question.id not in previous_questions]
 
-      random_question = random.choice(questions).format() if len(questions) > 0 else None
+      if len(sorted_questions) <= 0:
+        random_question = None
+      else:
+        random.shuffle(sorted_questions)
+        random_question = sorted_questions[0]
 
       return jsonify({
         'success': True,
-        'question': random_question
+        'random_question': random_question
       })
     except:
       abort(422)
@@ -235,29 +256,28 @@ def create_app(test_config=None):
   '''
 
   @app.errorhandler(404)
-  def not_found(error):
+  def page_not_found(error):
     return jsonify({
       "success": False,
       "error": 404,
-      "message": "resource not found"
+      "message": "Page or resource not found"
     }), 404
 
   @app.errorhandler(422)
-  def unprocessable(error):
+  def request_cannot_be_processed(error):
     return jsonify({
       "success": False,
       "error": 422,
-      "message": "unprocessable"
+      "message": "Request entity cannot be processed"
     }), 422
 
   @app.errorhandler(400)
-  def bad_request(error):
+  def bad_request_sent(error):
     return jsonify({
       "success": False,
       "error": 400,
-      "message": "bad request"
+      "message": "bad request sent, please review your request"
     }), 400
 
   return app
 
-    
